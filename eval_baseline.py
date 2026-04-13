@@ -65,7 +65,6 @@ def has_model_access(model_id: str) -> bool:
 
 
 def is_refusal(response: str) -> bool:
-    """Return True if *response* contains any refusal substring."""
     return any(sub in response for sub in REFUSAL_SUBSTRINGS)
 
 
@@ -285,7 +284,6 @@ def main() -> None:
     else:
         logger.info(f"Model {args.model_id} has access.")
 
-    # Load model once and reuse for both benchmarks
     from utils import load_model
 
     logger.info("Loading model …")
@@ -316,7 +314,6 @@ def main() -> None:
 
     results["summary"] = summary
 
-    # Print summary table
     print("\n" + "=" * 50)
     print("SUMMARY")
     print("=" * 50)

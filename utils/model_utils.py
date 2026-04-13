@@ -1,12 +1,3 @@
-"""
-Model loading and batched inference utilities for LLaMA 3-8B.
-
-Supports three backends:
-  - "hf"   : HuggingFace Transformers (default, works everywhere)
-  - "vllm" : vLLM (fast, requires separate GPU allocation)
-  - "4bit" : HF + bitsandbytes 4-bit quantisation (low VRAM path)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -16,28 +7,18 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# Default model id – swap for the instruct variant as needed
 LLAMA3_8B_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-# Chat template roles
 ROLE_SYSTEM = "system"
 ROLE_USER = "user"
 ROLE_ASSISTANT = "assistant"
 
-
-# ---------------------------------------------------------------------------
-# Prompt formatting
-# ---------------------------------------------------------------------------
 
 def build_chat_prompt(
     user_message: str,
     system_prompt: Optional[str] = None,
     tokenizer=None,
 ) -> str:
-    """Format a single user turn using LLaMA 3's chat template.
-
-    Falls back to a minimal hand-written template when no tokenizer is given.
-    """
     messages = []
     if system_prompt:
         messages.append({"role": ROLE_SYSTEM, "content": system_prompt})
@@ -50,7 +31,6 @@ def build_chat_prompt(
             add_generation_prompt=True,
         )
 
-    # Minimal fallback for LLaMA 3
     parts = ["<|begin_of_text|>"]
     for msg in messages:
         parts.append(
@@ -61,12 +41,7 @@ def build_chat_prompt(
     return "".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# HuggingFace backend
-# ---------------------------------------------------------------------------
-
 class HFModel:
-    """Thin wrapper around a HuggingFace causal LM for batched generation."""
 
     def __init__(
         self,
@@ -116,7 +91,6 @@ class HFModel:
 
     @torch.inference_mode()
     def generate(self, prompts: List[str], batch_size: int = 8) -> List[str]:
-        """Generate responses for a list of already-formatted prompt strings."""
         all_responses: List[str] = []
 
         for start in range(0, len(prompts), batch_size):
@@ -140,7 +114,6 @@ class HFModel:
                 eos_token_id=self.tokenizer.eos_token_id,
             )
 
-            # Decode only the newly generated tokens
             input_len = inputs["input_ids"].shape[1]
             new_ids = output_ids[:, input_len:]
             decoded = self.tokenizer.batch_decode(new_ids, skip_special_tokens=True)
@@ -149,12 +122,7 @@ class HFModel:
         return all_responses
 
 
-# ---------------------------------------------------------------------------
-# vLLM backend
-# ---------------------------------------------------------------------------
-
 class VLLMModel:
-    """Wrapper around vLLM's LLM class for high-throughput offline inference."""
 
     def __init__(
         self,
@@ -184,7 +152,6 @@ class VLLMModel:
         )
 
     def generate(self, prompts: List[str], batch_size: int = 0) -> List[str]:
-        """batch_size is ignored; vLLM handles scheduling internally."""
         sampling_params = self.SamplingParams(
             temperature=self.temperature,
             top_p=self.top_p,
@@ -194,10 +161,6 @@ class VLLMModel:
         return [out.outputs[0].text for out in outputs]
 
 
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
 def load_model(
     backend: str = "hf",
     model_id: str = LLAMA3_8B_MODEL_ID,
@@ -205,18 +168,6 @@ def load_model(
     max_new_tokens: int = 512,
     temperature: float = 0.0,
 ):
-    """Instantiate a model with the requested backend.
-
-    Args:
-        backend: "hf" | "4bit" | "vllm"
-        model_id: HuggingFace model repository ID.
-        load_in_4bit: Force 4-bit quantisation (only relevant for "hf" backend).
-        max_new_tokens: Maximum tokens to generate per prompt.
-        temperature: Sampling temperature (0 = greedy).
-
-    Returns:
-        An HFModel or VLLMModel instance.
-    """
     backend = backend.lower()
 
     if backend == "vllm":
@@ -236,10 +187,6 @@ def load_model(
 
     raise ValueError(f"Unknown backend '{backend}'. Choose one of: hf, 4bit, vllm")
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 def _flash_attn_available() -> bool:
     try:
