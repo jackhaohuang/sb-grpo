@@ -14,6 +14,41 @@ ROLE_USER = "user"
 ROLE_ASSISTANT = "assistant"
 
 
+def _load_tokenizer(model_id: str, padding_side: Optional[str] = None):
+    from transformers import AutoTokenizer
+
+    kwargs = {"use_fast": True}
+    if padding_side is not None:
+        kwargs["padding_side"] = padding_side
+
+    def _from_pretrained(**tokenizer_kwargs):
+        # Newer tokenizers may require this to avoid known mistral regex issues.
+        try:
+            return AutoTokenizer.from_pretrained(
+                model_id, fix_mistral_regex=True, **tokenizer_kwargs
+            )
+        except TypeError:
+            # Older transformers versions do not support fix_mistral_regex.
+            return AutoTokenizer.from_pretrained(model_id, **tokenizer_kwargs)
+
+    try:
+        return _from_pretrained(**kwargs)
+    except ValueError as exc:
+        # Some environments miss optional tokenizer backends (e.g. sentencepiece).
+        # Fall back to slow tokenizers so evaluation can still proceed.
+        if kwargs.get("use_fast") and "Couldn't instantiate the backend tokenizer" in str(
+            exc
+        ):
+            logger.warning(
+                "Fast tokenizer unavailable for %s; retrying with use_fast=False.",
+                model_id,
+            )
+            fallback_kwargs = dict(kwargs)
+            fallback_kwargs["use_fast"] = False
+            return _from_pretrained(**fallback_kwargs)
+        raise
+
+
 def build_chat_prompt(
     user_message: str,
     system_prompt: Optional[str] = None,
@@ -53,7 +88,7 @@ class HFModel:
         temperature: float = 0.0,
         top_p: float = 1.0,
     ):
-        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
         self.model_id = model_id
         self.max_new_tokens = max_new_tokens
@@ -61,9 +96,7 @@ class HFModel:
         self.top_p = top_p
 
         logger.info("Loading tokenizer: %s", model_id)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id, use_fast=True, padding_side="left"
-        )
+        self.tokenizer = _load_tokenizer(model_id, padding_side="left")
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -134,14 +167,13 @@ class VLLMModel:
         top_p: float = 1.0,
     ):
         from vllm import LLM, SamplingParams
-        from transformers import AutoTokenizer
 
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
         self.top_p = top_p
         self.SamplingParams = SamplingParams
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
+        self.tokenizer = _load_tokenizer(model_id)
 
         logger.info("Initialising vLLM engine: %s", model_id)
         self.llm = LLM(

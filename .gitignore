@@ -1,4 +1,8 @@
+# Secrets
 .env
+*.local
+
+# Python
 .venv/
 venv/
 __pycache__/
@@ -6,7 +10,49 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
-logs/*.out
-logs/*.err
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Slurm/runtime logs
+*.out
+*.err
 *.sbatch
+logs/
+
+# Data (large / generated)
 data/
+trained_grpo/
+results/
+eval_results/
+
+# ML artifacts
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+*.npy
+*.npz
+events.out.tfevents.*
+runs/
+outputs/
+
+# WandB
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Scratchpad
+commands.txt

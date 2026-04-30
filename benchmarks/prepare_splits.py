@@ -5,6 +5,7 @@ import random
 import json
 from datetime import datetime
 
+from benchmarks.alpaca_loader import load_alpaca_safe
 from benchmarks.advbench_loader import load_advbench
 from benchmarks.harmbench_loader import load_harmbench
 from benchmarks.orbench_loader import load_orbench
@@ -91,6 +92,23 @@ def main() -> None:
     save_jsonl(f"{SPLIT_DIR}/orbench_hard_test.jsonl", or_test)
     save_jsonl(f"{SPLIT_DIR}/orbench_hard_eval.jsonl", or_eval)
 
+    alpaca = load_alpaca_safe()
+    safe_train, safe_test, safe_eval = split_three_way(
+        alpaca,
+        n_train=2000,
+        n_test=1000,
+        seed=SEED,
+    )
+    if len(safe_eval) < 1000:
+        raise ValueError(
+            f"Need at least 4000 Alpaca samples to make 2000/1000/1000 split, got {len(alpaca)}"
+        )
+    safe_eval = safe_eval[:1000]
+
+    save_jsonl(f"{SPLIT_DIR}/safe_train.jsonl", safe_train)
+    save_jsonl(f"{SPLIT_DIR}/safe_test.jsonl", safe_test)
+    save_jsonl(f"{SPLIT_DIR}/safe_eval.jsonl", safe_eval)
+
     print("Saved splits:")
     print("  harmful_train.jsonl")
     print("  harmful_test.jsonl")
@@ -98,6 +116,9 @@ def main() -> None:
     print("  orbench_hard_train.jsonl")
     print("  orbench_hard_test.jsonl")
     print("  orbench_hard_eval.jsonl")
+    print("  safe_train.jsonl")
+    print("  safe_test.jsonl")
+    print("  safe_eval.jsonl")
 
     manifest = {
         "created_at": datetime.utcnow().isoformat() + "Z",
@@ -121,6 +142,12 @@ def main() -> None:
             "train": len(or_train),
             "test": len(or_test),
             "eval": len(or_eval),
+        },
+        "safe": {
+            "dataset": "tatsu-lab/alpaca",
+            "train": len(safe_train),
+            "test": len(safe_test),
+            "eval": len(safe_eval),
         },
     }
 

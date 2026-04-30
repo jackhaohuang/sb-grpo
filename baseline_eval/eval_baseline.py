@@ -11,6 +11,9 @@ from huggingface_hub import HfApi
 from dotenv import load_dotenv
 load_dotenv()
 
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 REFUSAL_SUBSTRINGS: List[str] = [
     "I'm sorry",
     "I am sorry",
@@ -52,6 +55,9 @@ def refusal_prompt_from_row(row: dict) -> str:
     return text.strip() if isinstance(text, str) else ""
 
 def has_model_access(model_id: str) -> bool:
+    # Local checkpoints skip Hub access checks (HfApi rejects absolute paths).
+    if os.path.isdir(model_id):
+        return True
     api = HfApi()
     token = os.getenv("HF_TOKEN")
 
@@ -74,6 +80,29 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+def _one_line(text: str, max_chars: int = 220) -> str:
+    s = " ".join((text or "").split())
+    if len(s) <= max_chars:
+        return s
+    return s[: max_chars - 3] + "..."
+
+
+def log_preview_samples(benchmark: str, samples: list[dict], n_preview: int) -> None:
+    if n_preview <= 0 or not samples:
+        return
+    n = min(n_preview, len(samples))
+    logger.info("Previewing %d %s examples:", n, benchmark)
+    for i, sample in enumerate(samples[:n], start=1):
+        prompt = sample.get("prompt") or sample.get("behavior") or sample.get("goal") or ""
+        response = sample.get("response") or ""
+        if benchmark == "orbench":
+            logger.info("[%s #%d] prompt:\n%s\n%s", benchmark, i, prompt, "-" * 80)
+            logger.info("[%s #%d] response:\n%s\n%s", benchmark, i, response, "-" * 80)
+        else:
+            logger.info("[%s #%d] prompt   : %s", benchmark, i, _one_line(prompt))
+            logger.info("[%s #%d] response : %s", benchmark, i, _one_line(response))
 
 
 def run_harmful_eval(model, args) -> dict:
@@ -123,6 +152,7 @@ def run_harmful_eval(model, args) -> dict:
         "Harmful Eval | total=%d refused=%d ASR=%.3f",
         n_total, n_refused, asr,
     )
+    log_preview_samples("harmful_eval", samples, args.preview_samples)
 
     return {
         "benchmark": "harmful_eval",
@@ -168,6 +198,7 @@ def run_orbench_eval(model, args) -> dict:
         "OR-Bench | total=%d refused=%d ORR=%.3f",
         n_total, n_refused, orr,
     )
+    log_preview_samples("orbench", samples, args.preview_samples)
 
     return {
         "benchmark": "orbench",
@@ -260,6 +291,12 @@ def parse_args() -> argparse.Namespace:
         "--output_dir",
         default="results/baseline",
         help="Directory to write JSON result files.",
+    )
+    parser.add_argument(
+        "--preview_samples",
+        type=int,
+        default=3,
+        help="Number of prompt/response examples to log per benchmark.",
     )
 
     return parser.parse_args()
